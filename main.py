@@ -34,6 +34,55 @@ from evaluate import compare_forecasts, var_calibration
 warnings.filterwarnings("ignore")
 
 
+def plot_per_ticker(merged, prices, tickers, split_date, out_dir):
+    """
+    For each ticker, save a two-panel chart:
+      - top: the stock's own price performance during the test window
+      - bottom: each model's forward-volatility forecast vs. what actually
+        happened (the realized volatility), over time
+
+    This is the "look at one company specifically" view -- useful when you
+    care about a stock's own risk profile rather than a multi-asset
+    portfolio decision.
+    """
+    saved = []
+    for ticker in tickers:
+        if ticker not in prices.columns:
+            continue
+        g = merged[merged["ticker"] == ticker].sort_index()
+        if g.empty:
+            continue
+
+        fig, axes = plt.subplots(2, 1, figsize=(10, 8))
+
+        test_prices = prices.loc[prices.index > split_date, ticker].dropna()
+        if len(test_prices) > 0:
+            norm = test_prices / test_prices.iloc[0]
+            axes[0].plot(norm.index, norm.values, color="black")
+        axes[0].set_title(f"{ticker}: price performance (out-of-sample)")
+        axes[0].set_ylabel("Growth of $1")
+        axes[0].axhline(1.0, color="gray", linewidth=0.8, linestyle="--")
+
+        axes[1].plot(g.index, g["target_fwd_rvol"], label="Realized (actual)",
+                     color="black", linewidth=2)
+        for col, label in [("ewma_fwd_rvol", "EWMA"), ("garch_fwd_rvol", "GARCH"),
+                           ("ml_pred", "LSTM")]:
+            if col in g.columns and g[col].notna().any():
+                axes[1].plot(g.index, g[col], label=label, alpha=0.85)
+        axes[1].set_title(f"{ticker}: forward volatility forecasts vs. realized")
+        axes[1].set_ylabel("Annualized volatility")
+        axes[1].legend()
+
+        fig.tight_layout()
+        fname = f"{out_dir}/{ticker}_volatility.png"
+        fig.savefig(fname, dpi=120)
+        plt.close(fig)
+        saved.append(fname)
+        print(f"Saved per-ticker plot to {fname}")
+
+    return saved
+
+
 def run(tickers, demo, start, end, train_frac=0.7, out_dir="."):
     print(f"\n=== Loading data ({'synthetic demo' if demo else 'real via yfinance'}) ===")
     if demo:
@@ -78,9 +127,15 @@ def run(tickers, demo, start, end, train_frac=0.7, out_dir="."):
     merged = merged.merge(baseline_fc.reset_index().rename(columns={"index": "date"}), on=["date", "ticker"], how="left")
     merged = merged.set_index("date")
 
-    print("\n=== Forecast accuracy: ML vs GARCH vs EWMA ===")
+    print("\n=== Forecast accuracy: ML vs GARCH vs EWMA (all tickers combined) ===")
     leaderboard = compare_forecasts(merged, forecast_cols=("ewma_fwd_rvol", "garch_fwd_rvol", "ml_pred"))
     print(leaderboard.to_string(index=False))
+
+    print("\n=== Forecast accuracy per ticker ===")
+    for ticker, g in merged.groupby("ticker"):
+        per_ticker_board = compare_forecasts(g, forecast_cols=("ewma_fwd_rvol", "garch_fwd_rvol", "ml_pred"))
+        print(f"\n  -- {ticker} --")
+        print("  " + per_ticker_board.to_string(index=False).replace("\n", "\n  "))
 
     print("\n=== VaR calibration (5% return-quantile model) ===")
     # Compare against target_next_return -- the *exact* quantity the quantile
@@ -145,7 +200,10 @@ def run(tickers, demo, start, end, train_frac=0.7, out_dir="."):
     leaderboard.to_csv(f"{out_dir}/forecast_leaderboard.csv", index=False)
     print(f"Saved leaderboard to {out_dir}/forecast_leaderboard.csv")
 
-    return leaderboard, results
+    print("\n=== Saving per-ticker volatility plots ===")
+    per_ticker_plots = plot_per_ticker(merged, prices, tickers, split_date, out_dir)
+
+    return leaderboard, results, per_ticker_plots
 
 
 if __name__ == "__main__":
