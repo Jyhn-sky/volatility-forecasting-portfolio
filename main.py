@@ -20,7 +20,6 @@ import argparse
 import warnings
 
 import matplotlib
-matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -47,9 +46,9 @@ DEFAULT_REGIMES = [
 ]
 
 
-def plot_per_ticker(merged, prices, tickers, split_date, out_dir):
+def plot_per_ticker(merged, prices, tickers, split_date, out_dir, save=True):
     """
-    For each ticker, save a two-panel chart:
+    For each ticker, build a two-panel chart:
       - top: the stock's own price performance during the test window
       - bottom: each model's forward-volatility forecast vs. what actually
         happened (the realized volatility), over time
@@ -57,6 +56,11 @@ def plot_per_ticker(merged, prices, tickers, split_date, out_dir):
     This is the "look at one company specifically" view -- useful when you
     care about a stock's own risk profile rather than a multi-asset
     portfolio decision.
+
+    If save=True, each chart is written to disk as a PNG. If save=False,
+    the figure is left open (not closed, not written to disk) so it can be
+    displayed all at once later via plt.show() -- nothing touches the
+    filesystem in that mode.
     """
     saved = []
     for ticker in tickers:
@@ -67,6 +71,8 @@ def plot_per_ticker(merged, prices, tickers, split_date, out_dir):
             continue
 
         fig, axes = plt.subplots(2, 1, figsize=(10, 8))
+        if fig.canvas.manager is not None:
+            fig.canvas.manager.set_window_title(f"{ticker} volatility")
 
         test_prices = prices.loc[prices.index > split_date, ticker].dropna()
         if len(test_prices) > 0:
@@ -87,16 +93,19 @@ def plot_per_ticker(merged, prices, tickers, split_date, out_dir):
         axes[1].legend()
 
         fig.tight_layout()
-        fname = f"{out_dir}/{ticker}_volatility.png"
-        fig.savefig(fname, dpi=120)
-        plt.close(fig)
-        saved.append(fname)
-        print(f"Saved per-ticker plot to {fname}")
+
+        if save:
+            fname = f"{out_dir}/{ticker}_volatility.png"
+            fig.savefig(fname, dpi=120)
+            plt.close(fig)
+            saved.append(fname)
+            print(f"Saved per-ticker plot to {fname}")
+        # else: leave the figure open, don't touch disk -- shown later by plt.show()
 
     return saved
 
 
-def run(tickers, demo, start, end, train_frac=0.7, out_dir="."):
+def run(tickers, demo, start, end, train_frac=0.7, out_dir=".", save=True):
     print(f"\n=== Loading data ({'synthetic demo' if demo else 'real via yfinance'}) ===")
     if demo:
         prices, vix = generate_synthetic_data(tickers, n_days=1500)
@@ -206,13 +215,14 @@ def run(tickers, demo, start, end, train_frac=0.7, out_dir="."):
         combined = pd.concat(
             [rt.assign(strategy=name) for name, rt in regime_tables.items()], ignore_index=True
         )
-        combined.to_csv(f"{out_dir}/regime_breakdown.csv", index=False)
-        print(f"\nSaved regime breakdown to {out_dir}/regime_breakdown.csv")
+        if save:
+            combined.to_csv(f"{out_dir}/regime_breakdown.csv", index=False)
+            print(f"\nSaved regime breakdown to {out_dir}/regime_breakdown.csv")
     else:
         print("  (None of the default regime windows overlapped this backtest's date range --"
               " edit DEFAULT_REGIMES in main.py to match your own test period.)")
 
-    print("\n=== Saving plots ===")
+    print("\n=== Building plots ===")
     fig, axes = plt.subplots(2, 1, figsize=(10, 8))
 
     axes[0].plot(history["train_loss"], label="train")
@@ -230,14 +240,21 @@ def run(tickers, demo, start, end, train_frac=0.7, out_dir="."):
     axes[1].set_ylabel("Growth of $1")
 
     fig.tight_layout()
-    fig.savefig(f"{out_dir}/results.png", dpi=120)
-    print(f"Saved plot to {out_dir}/results.png")
+    if save:
+        fig.savefig(f"{out_dir}/results.png", dpi=120)
+        print(f"Saved plot to {out_dir}/results.png")
 
-    leaderboard.to_csv(f"{out_dir}/forecast_leaderboard.csv", index=False)
-    print(f"Saved leaderboard to {out_dir}/forecast_leaderboard.csv")
+    if save:
+        leaderboard.to_csv(f"{out_dir}/forecast_leaderboard.csv", index=False)
+        print(f"Saved leaderboard to {out_dir}/forecast_leaderboard.csv")
 
-    print("\n=== Saving per-ticker volatility plots ===")
-    per_ticker_plots = plot_per_ticker(merged, prices, tickers, split_date, out_dir)
+    print("\n=== Building per-ticker volatility plots ===")
+    per_ticker_plots = plot_per_ticker(merged, prices, tickers, split_date, out_dir, save=save)
+
+    if not save:
+        print("\n--save was not passed, so nothing was written to disk.")
+        print("Close the chart windows to end the program.")
+        plt.show()  # blocks until all open figure windows are closed; nothing is saved
 
     return leaderboard, results, per_ticker_plots
 
@@ -249,6 +266,21 @@ if __name__ == "__main__":
     parser.add_argument("--start", default="2018-01-01")
     parser.add_argument("--end", default="2024-01-01")
     parser.add_argument("--out_dir", default=".")
+    parser.add_argument("--save", action="store_true",
+                         help="Write results.png, per-ticker PNGs, and CSVs to disk. "
+                              "Without this flag, charts open in windows and nothing is "
+                              "saved -- just close the windows when you're done looking.")
     args = parser.parse_args()
 
-    run(args.tickers, args.demo, args.start, args.end, out_dir=args.out_dir)
+    if args.save:
+        matplotlib.use("Agg")  # no display needed, just write files
+    else:
+        try:
+            matplotlib.use("TkAgg")  # interactive window backend, ships with most Python installs
+        except Exception:
+            print("Could not open an interactive plot window on this system "
+                  "(no display / Tk not available). Falling back to --save mode instead.")
+            matplotlib.use("Agg")
+            args.save = True
+
+    run(args.tickers, args.demo, args.start, args.end, out_dir=args.out_dir, save=args.save)
