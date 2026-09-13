@@ -3,9 +3,11 @@
 This project predicts how risky a stock is likely to be (its volatility),
 instead of trying to predict whether the price will go up or down. Those
 risk predictions are then used to decide how to split money across a few
-different stocks. I picked this angle on purpose because I want to go
-into risk/portfolio management, and this is a small, hands-on version of
-the kind of problem that field actually deals with.
+different stocks. I picked this angle because it's closer to how risk is 
+actually thought about in finance, rather than another "predict if the 
+stock goes up" project. I'm still figuring out exactly which direction I 
+want to go in finance, but this felt like a good way to learn something 
+more substantial than a typical beginner project.
 
 ## Why volatility instead of price direction?
 
