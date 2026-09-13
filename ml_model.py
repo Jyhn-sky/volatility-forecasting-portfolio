@@ -85,7 +85,7 @@ def pinball_loss(y_pred, y_true, quantile):
 
 def train_model(train_panel, val_panel, mode="point", quantile=0.05,
                  target_col=None, epochs=30, batch_size=64, lr=1e-3,
-                 hidden_size=32, verbose=True):
+                 hidden_size=16, weight_decay=1e-4, patience=5, verbose=True):
     """
     Train a VolLSTM.
       mode="point"    -> MSE against target_fwd_rvol (forward realized vol;
@@ -96,6 +96,17 @@ def train_model(train_panel, val_panel, mode="point", quantile=0.05,
                           an actual VaR forecast, not a vol forecast in
                           disguise). Softplus output is disabled for this
                           mode since return quantiles are negative.
+
+    Regularization / early stopping: validation loss on this kind of panel
+    tends to bottom out within the first few epochs and then climb back up
+    as the model starts memorizing the training window (classic overfitting
+    -- we saw this directly in early runs of this project). To address it:
+      - hidden_size defaults to 16 instead of 32 (less capacity to overfit)
+      - weight_decay adds L2 regularization via the optimizer
+      - training stops early once val_loss hasn't improved for `patience`
+        epochs, and the model's weights are rolled back to whichever epoch
+        had the best validation loss (not just whatever epoch training
+        happened to stop at)
     Returns (model, scaler, history).
     """
     if target_col is None:
@@ -108,7 +119,11 @@ def train_model(train_panel, val_panel, mode="point", quantile=0.05,
     val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False)
 
     model = VolLSTM(n_features=len(FEATURE_COLS), hidden_size=hidden_size, nonneg_output=(mode == "point"))
-    opt = torch.optim.Adam(model.parameters(), lr=lr)
+    opt = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
+
+    best_val_loss = float("inf")
+    best_state = None
+    epochs_since_improvement = 0
 
     history = {"train_loss": [], "val_loss": []}
     for epoch in range(epochs):
@@ -136,9 +151,29 @@ def train_model(train_panel, val_panel, mode="point", quantile=0.05,
 
         history["train_loss"].append(np.mean(train_losses))
         history["val_loss"].append(np.mean(val_losses))
+        current_val_loss = history["val_loss"][-1]
+
+        if current_val_loss < best_val_loss:
+            best_val_loss = current_val_loss
+            best_state = {k: v.clone() for k, v in model.state_dict().items()}
+            epochs_since_improvement = 0
+        else:
+            epochs_since_improvement += 1
+
         if verbose and (epoch % 5 == 0 or epoch == epochs - 1):
             print(f"epoch {epoch:3d}  train_loss={history['train_loss'][-1]:.5f}  "
                   f"val_loss={history['val_loss'][-1]:.5f}")
+
+        if epochs_since_improvement >= patience:
+            if verbose:
+                print(f"  Early stopping at epoch {epoch} "
+                      f"(no val improvement for {patience} epochs; "
+                      f"best val_loss={best_val_loss:.5f})")
+            break
+
+    if best_state is not None:
+        model.load_state_dict(best_state)  # roll back to the best-val-loss epoch,
+        # not whatever epoch training happened to stop at
 
     return model, train_ds.scaler(), history
 

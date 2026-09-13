@@ -49,6 +49,8 @@ python main.py --tickers AAPL MSFT JPM XOM PG --start 2015-01-01 --end 2024-01-0
 Outputs: `results.png` (training curve + cumulative portfolio return
 comparison) and `forecast_leaderboard.csv` (RMSE/QLIKE by model).
 
+![Training curve and portfolio comparison](results.png)
+
 ## What each piece actually does
 
 **Two separate targets, on purpose:**
@@ -80,6 +82,41 @@ transaction costs and a 1-day trading lag (you can't trade on same-day
 information). A `min_variance` scheme (with shrinkage-adjusted covariance)
 is also implemented in `backtest.py` if you want to extend beyond
 risk-parity.
+
+## Results
+
+**Setup:** Ran on JPM, BAC, WFC, GS, and MS (5 major US banks) from
+2018-01-01 to 2024-01-01. Out-of-sample test window: March 2022 -
+November 2023.
+
+**Forecast accuracy:** The LSTM outperformed both classical baselines on
+combined QLIKE (0.168 vs. 0.186 for GARCH and 0.222 for EWMA) and won on
+4 of 5 individual tickers (BAC, GS, MS, WFC). EWMA was more accurate
+specifically for JPM — a useful reminder that "best model" can be
+ticker-dependent, not universal.
+
+**VaR calibration:** 4 of 5 banks were well-calibrated (actual breach
+rate within ~1% of the 5% target). JPM was the exception: actual breach
+rate was 2.71% against a 5% target, meaning the model was overly
+conservative and under-flagged tail risk for that specific stock.
+
+**Portfolio performance:** Despite the LSTM having the most accurate
+individual forecasts, the LSTM-driven risk-parity portfolio *underperformed*
+a naive equal-weight benchmark on a risk-adjusted basis (Sharpe -0.06 vs.
+0.12), as did GARCH (-0.13) and EWMA (-0.14). All three forecast-driven
+portfolios also had worse max drawdown than equal-weight.
+
+**Takeaway:** Better volatility forecasting did not translate into better
+portfolio outcomes here. The test window includes the March 2023 regional
+banking crisis (Silicon Valley Bank and Signature Bank collapsed that
+month), when bank stocks sold off in near-lockstep. Risk-parity works by
+shifting weight away from whichever asset looks individually riskiest —
+but during a systemic, correlation-driven shock, that doesn't help, since
+every asset moves together regardless of its own recent volatility. This
+suggests risk-parity alone is insufficient during correlation-breakdown
+events, and would benefit from an explicit correlation or regime-detection
+layer (see Extensions below) rather than relying on per-asset volatility
+forecasts alone.
 
 ## Known limitations (be upfront about these — it's a strength, not a weakness)
 
