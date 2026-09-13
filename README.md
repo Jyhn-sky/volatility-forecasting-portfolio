@@ -3,11 +3,9 @@
 This project predicts how risky a stock is likely to be (its volatility),
 instead of trying to predict whether the price will go up or down. Those
 risk predictions are then used to decide how to split money across a few
-different stocks. I picked this angle because it's closer to how risk is 
-actually thought about in finance, rather than another "predict if the stock
-goes up" project. I'm still figuring out exactly which direction I want to go
-in finance, but this felt like a good way to learn something more substantial
-than a typical beginner project.
+different stocks. I picked this angle on purpose because I want to go
+into risk/portfolio management, and this is a small, hands-on version of
+the kind of problem that field actually deals with.
 
 ## Why volatility instead of price direction?
 
@@ -52,14 +50,22 @@ pip install torch arch scikit-learn matplotlib yfinance pandas numpy
 
 ```bash
 # Quick test with synthetic data, no internet needed
+# Charts open in windows, nothing is written to disk unless you add --save
 python main.py --demo --tickers AAPL MSFT JPM
 
 # Real run using actual stock data (requires internet)
 python main.py --tickers AAPL MSFT JPM XOM PG --start 2015-01-01 --end 2024-01-01
+
+# Add --save to write results.png, per-ticker PNGs, and CSV files to disk
+# instead of just opening chart windows
+python main.py --tickers AAPL MSFT JPM XOM PG --start 2015-01-01 --end 2024-01-01 --save
 ```
 
-This saves a chart (`results.png`) and a CSV file
-(`forecast_leaderboard.csv`) comparing how accurate each model was.
+By default, charts open in interactive windows and nothing gets saved.
+Close the windows when you're done looking and the program ends with
+nothing left behind in the folder. Add `--save` if you want `results.png`,
+the per-ticker PNGs, and `forecast_leaderboard.csv` /
+`regime_breakdown.csv` actually written to disk.
 
 ![Training curve and portfolio comparison](results.png)
 
