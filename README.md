@@ -1,63 +1,58 @@
 # Volatility Forecasting & Risk-Aware Portfolio Allocation
 
-This project tries to predict how *risky* a stock is going to be (its
-volatility), instead of trying to predict whether the price will go up or
-down. Then it uses those risk predictions to decide how to split money
-across a few different stocks. I picked this angle on purpose because I
-want to go into risk/portfolio management, and this project is basically
-a small, hands-on version of the kind of thing that field actually cares
-about.
+This project predicts how risky a stock is likely to be (its volatility),
+instead of trying to predict whether the price will go up or down. Those
+risk predictions are then used to decide how to split money across a few
+different stocks. I picked this angle on purpose because I want to go
+into risk/portfolio management, and this is a small, hands-on version of
+the kind of problem that field actually deals with.
 
-## Why volatility and not just "will the stock go up"?
+## Why volatility instead of price direction?
 
-Predicting whether a stock's price goes up or down tomorrow is really,
-really hard, almost to the point of basically being random (this is
-related to something called the efficient market hypothesis, which
-roughly says stock prices already reflect all the info people have, so
-there's not much "free" pattern left to find). So instead of trying to
-predict price direction, I predict **volatility** — basically, "how much
-is this stock about to bounce around," not "which way will it go."
-Volatility turns out to be a lot easier to predict than direction,
-because calm periods tend to stay calm and wild periods tend to stay
-wild. This is called "volatility clustering," and there are already old
-formulas from statistics (GARCH and EWMA) that are pretty good at
-capturing it.
+Predicting whether a stock goes up or down tomorrow is extremely hard,
+almost random. This connects to the efficient market hypothesis, which
+says stock prices already reflect most available information, so there's
+not much of a free, exploitable pattern left in price direction.
 
-So the real question I was trying to answer wasn't "can a machine
-learning model predict volatility at all" (yes, kind of trivially, since
-volatility is predictable in general). The real question was: **can my
-LSTM (a type of neural network) actually beat those older, simpler
-formulas, and can I trust its risk estimates enough to actually use them?**
-I tried to answer that honestly, even in the parts where the answer ended
-up being "not really" or "only sometimes."
+Volatility is different. It's a lot easier to predict than direction,
+because calm periods tend to stay calm and volatile periods tend to stay
+volatile. This is called volatility clustering, and older statistical
+models (GARCH and EWMA) already capture it reasonably well.
 
-## What's in each file
+So the real question wasn't "can a machine learning model predict
+volatility at all" (yes, fairly trivially, since volatility is
+predictable in general). The real question was: can an LSTM (a type of
+neural network) actually beat those simpler, established models, and can
+its risk estimates be trusted enough to use? I tried to answer that
+honestly, including the parts where the answer turned out to be "not
+really" or "only sometimes."
+
+## Project structure
 
 ```
-data_pipeline.py     # loads stock price data (real data from yfinance, or fake/synthetic
-                      #   data if you don't have internet) and builds the input features
-baseline_models.py   # the two "old school" volatility formulas: EWMA and GARCH
-ml_model.py          # my LSTM model - one version predicts volatility, another
-                      #   version predicts a "worst case" return (used for VaR, see below)
-backtest.py          # takes the predictions and turns them into a portfolio,
-                      #   then simulates how that portfolio would have done
-evaluate.py          # checks how good the predictions actually were
-main.py              # runs everything above, start to finish
+data_pipeline.py     # loads stock price data (real data via yfinance, or synthetic
+                      #   data for offline testing) and builds the input features
+baseline_models.py   # the two classical volatility models: EWMA and GARCH
+ml_model.py          # LSTM models: one predicts volatility, another predicts a
+                      #   "worst case" return (used for VaR, explained below)
+backtest.py          # turns predictions into a portfolio and simulates performance
+evaluate.py          # checks how accurate the predictions actually were
+main.py              # runs the full pipeline end to end
 ```
 
-## How to set it up
+## Setup
 
 ```bash
 pip install torch arch scikit-learn matplotlib yfinance pandas numpy
 ```
 
-## How to run it
+## Usage
 
 ```bash
-# Quick test with made-up data, no internet needed
+# Quick test with synthetic data, no internet needed
 python main.py --demo --tickers AAPL MSFT JPM
 
-# Real run using actual stock data (needs internet)
+# Real run using actual stock data (requires internet)
 python main.py --tickers AAPL MSFT JPM XOM PG --start 2015-01-01 --end 2024-01-01
 ```
 
@@ -66,131 +61,121 @@ This saves a chart (`results.png`) and a CSV file
 
 ![Training curve and portfolio comparison](results.png)
 
-## A quick explanation of what's actually going on
+## How it actually works
 
-**There are two different things being predicted, and that's on purpose:**
-- One target is the stock's volatility over the next few weeks. This is
-  what gets compared against the GARCH/EWMA formulas.
-- The other target is literally tomorrow's return, and this is used to
-  build something called VaR (Value at Risk) — basically an estimate of
-  "how bad could tomorrow realistically get." I originally mixed these
-  two up early on (used the wrong one for VaR) and had to go back and fix
-  it, since they're not actually the same thing — predicting "volatility
-  will be low" isn't the same as predicting "there's only a 5% chance of
-  a big loss tomorrow."
+**Two different things are being predicted, on purpose.** One target is
+the stock's volatility over the next few weeks, which gets compared
+against the GARCH/EWMA formulas. The other target is literally tomorrow's
+return, used to build VaR (Value at Risk), an estimate of how bad
+tomorrow could realistically get. Early on I mixed these two up (used the
+wrong target for VaR) and had to fix it, since predicting "volatility
+will be low" isn't the same as predicting "there's only a 5% chance of a
+big loss tomorrow."
 
-**I made sure not to let the model "cheat" by seeing the future.** When
-you're working with time-based data like stock prices, it's really easy
-to accidentally let your model peek at information from the future during
-training, which makes your results look way better than they actually
-are. I split everything so training data always comes strictly before
-test data, with no shuffling.
+**No peeking at the future.** With time-based data like stock prices,
+it's easy to accidentally let a model see information from the future
+during training, which makes results look better than they really are.
+Training data always comes strictly before test data here, with no
+shuffling across time.
 
-**I checked if my "risk warning" was actually trustworthy.** If a model
-says "there's only a 5% chance of a bad day tomorrow," that claim should
-actually be true about 5% of the time if you check it against real
-history. I built a check for this (`evaluate.var_calibration`) instead of
-just assuming the model's confidence numbers meant anything. Sometimes it
-was accurate, sometimes it wasn't — I tried to report that honestly
-instead of hiding the times it didn't work.
+**The "risk warning" gets checked, not just trusted.** If a model says
+there's only a 5% chance of a bad day tomorrow, that claim should
+actually hold up about 5% of the time when checked against real history.
+`evaluate.var_calibration` checks exactly that. Sometimes it held up,
+sometimes it didn't, and both outcomes are reported honestly below rather
+than only showing the good runs.
 
-**I built an actual portfolio out of the predictions, with realistic
-friction.** Once I have a risk prediction, I use it to decide how much
-money to put into each stock (put less money into whatever looks
-riskier). I also added trading costs and made sure you can't trade using
-information from the same day it becomes available (that would be
-unrealistic - you'd need at least a day to act on it).
+**The predictions get turned into an actual portfolio, with realistic
+friction.** Once there's a risk prediction, it's used to decide how much
+money goes into each stock (less money into whatever looks riskier).
+Trading costs are included, and trades only use information from the
+previous day, since acting on same-day information isn't realistic.
 
-## What I actually found when I ran it on real data
+## What I actually found on real data
 
-**Setup:** I used 5 big US banks (JPM, BAC, WFC, GS, MS), pulling data
-from 2018 to 2024. I tested the models on data from March 2022 to
-November 2023 (data they hadn't seen during training).
+**Setup:** 5 major US banks (JPM, BAC, WFC, GS, MS), pulling data from
+2018 to 2024. Testing was done on data from March 2022 to November 2023,
+which the model hadn't seen during training.
 
-**Which model predicted volatility best:** My LSTM won pretty clearly. It
-beat both GARCH and EWMA on accuracy for all 5 stocks, which was
-consistent across multiple runs.
+**Which model predicted volatility best:** The LSTM won clearly. It beat
+both GARCH and EWMA on accuracy for all 5 stocks, and this held up
+across multiple runs.
 
-**Was the "risk warning" (VaR) actually trustworthy:** Kind of hit or
-miss, honestly. In one run, only 1 of the 5 banks had a well-calibrated
-VaR estimate — the other 4 were too cautious, meaning the model said "5%
-chance of a bad day" when the real chance was closer to 1-3%. I think
-this happened because I made the model simpler to stop it from
-overfitting (more on that below), which may have also made it too
-conservative. I didn't fully solve this, and I'm being upfront about
-that instead of pretending it's not an issue.
+**Was the VaR estimate actually trustworthy:** Mixed. In one run, only 1
+of the 5 banks had a well-calibrated VaR estimate. The other 4 were too
+cautious, meaning the model claimed a 5% chance of a bad day when the
+real chance was closer to 1 to 3%. This likely happened because the model
+was made simpler to stop it from overfitting (more on that below), which
+may have also made it overly conservative. I didn't fully solve this, and
+I'm noting it here instead of leaving it out.
 
-**Did the better predictions actually make a better portfolio? No, and
-this was the most interesting part.** Even though my LSTM was the best
+**Did the better predictions lead to a better portfolio? No, and this was
+the most interesting part.** Even though the LSTM was the most accurate
 at predicting volatility, using those predictions to build a portfolio
-actually did *worse* than just splitting the money equally across all 5
-banks with no fancy math at all. At first I assumed this was because my
-strategy (called "risk parity," which shifts money away from whatever
-looks risky) must be failing specifically during the 2023 banking crisis,
-since that's when banks are correlated and crash together. So I checked
-that directly by breaking the results into three time chunks:
+actually did worse than simply splitting money equally across all 5
+banks. My first guess was that this "risk parity" strategy (which shifts
+money away from whatever looks risky) was failing specifically during the
+2023 banking crisis, since banks became highly correlated and crashed
+together. I tested that guess directly by breaking the results into three
+time periods:
 
-| Time period | My LSTM | GARCH | EWMA | Just split evenly |
+| Time period | LSTM | GARCH | EWMA | Equal split |
 |---|---|---|---|---|
-| 2022 rate-hike crash | -1.01 | -1.08 | -1.10 | -1.16 |
+| 2022 rate-hike selloff | -1.01 | -1.08 | -1.10 | -1.16 |
 | 2023 banking crisis | -2.20 | -2.16 | -2.24 | -2.17 |
 | Recovery after | 0.81 | 0.82 | 0.86 | **1.68** |
 
-(These numbers are Sharpe ratios — basically, return per unit of risk.
-Higher is better.)
+(These are Sharpe ratios, roughly return per unit of risk taken. Higher
+is better.)
 
-Turns out my first guess was wrong. During the actual crisis, every
-single strategy did about equally badly — so risk-parity wasn't uniquely
-failing there. Where the real gap showed up was **afterward, during the
-recovery.** Splitting money evenly did way better during the bounce-back
-(+34% annualized) than any of the "smart" strategies (+16-17%).
+That first guess turned out to be wrong. During the actual crisis, every
+strategy performed about equally badly, so risk parity wasn't uniquely
+failing there. The real gap showed up afterward, during the recovery.
+Splitting money evenly did far better during the bounce back (+34%
+annualized) than any of the volatility-driven strategies (+16 to 17%).
 
-**Why that happens, once I thought about it more:** risk-parity keeps
-pulling money away from whatever looks the riskiest at that moment. But
-right after a crash, the stocks that look "riskiest" are usually the same
-ones that crashed the hardest — and those are often exactly the stocks
-that bounce back the hardest too. So risk-parity was basically punishing
-itself by staying underweight in the stocks that ended up leading the
-recovery.
+**Why that happens:** risk parity keeps pulling money away from whatever
+looks riskiest at a given moment. Right after a crash, the stocks that
+look riskiest are usually the ones that fell hardest, and those are often
+exactly the stocks that bounce back hardest too. Risk parity ends up
+staying underweight in the stocks that end up leading the recovery.
 
-**My takeaway:** having a more accurate volatility forecast didn't
-actually translate into a better investment outcome here. The problem
-wasn't that risk-parity handled the crash badly (everyone did badly then)
-— it's that risk-parity's own rule (avoid what's risky) works against you
-once the market starts recovering. If I kept developing this, the fix I'd
-try first is having the strategy "loosen up" its risk-avoidance once a
-crisis looks like it's ending, instead of applying the same rule no
-matter what's going on in the market.
+**Takeaway:** a more accurate volatility forecast didn't translate into a
+better investment outcome here. The problem wasn't that risk parity
+handled the crash poorly (every strategy did poorly then). It's that risk
+parity's core rule, avoid what looks risky, works against it once the
+market starts recovering. A natural next step would be having the
+strategy relax its risk-avoidance once a crisis looks like it's ending,
+instead of applying the same rule regardless of market conditions.
 
-## Things I know are limitations (I'd rather say this myself than have someone else point it out)
+## Known limitations
 
-- The GARCH model only re-trains itself every 21 days instead of every
-  single day, mostly because re-training it daily is slow. A more
-  "for real" version would probably do it daily.
-- The way I calculate correlations between stocks for the min-variance
-  version (an alternative to risk-parity, also in `backtest.py`) is a
-  simplified version. Real risk teams usually use fancier techniques.
-- The fake/synthetic data mode is only meant for quickly testing that the
-  code runs — it's not real market behavior, so I only trust the results
-  I got from actual real data.
-- I only tested this on one time window, and a 5% "bad day" doesn't
-  happen very often, so my calibration numbers are based on a fairly
-  small sample. I wouldn't treat them as super precise, more like a
-  rough signal.
-- My results aren't perfectly identical every time I run this, since the
-  neural network starts from random values each time. The overall
-  pattern (LSTM most accurate, equal-split winning on real portfolio
-  performance) has stayed consistent, but exact numbers shift a bit
-  between runs.
+- The GARCH model only refits every 21 days instead of daily, mainly
+  because daily refitting is slow. A production version would likely
+  refit more often.
+- The correlation estimate used for the min-variance alternative (also in
+  `backtest.py`) is a simplified shrinkage approach. Real risk teams
+  typically use more sophisticated techniques.
+- The synthetic data mode is only meant for quickly testing that the code
+  runs. It doesn't reflect real market behavior, so all conclusions here
+  come from the real-data runs.
+- This was only tested on one time window, and a 5% "bad day" is
+  inherently rare, so the calibration numbers are based on a fairly small
+  sample. They're best treated as a rough signal, not a precise
+  statistical test.
+- Results aren't perfectly identical across runs, since the neural
+  network starts from random weights each time. The overall pattern (LSTM
+  most accurate, equal split winning on real portfolio performance) has
+  stayed consistent, but exact numbers shift slightly between runs.
 
-## What I'd add if I kept working on this
+## What I'd add next
 
-- Add more types of input features (like sector info or momentum) instead
-  of only looking at each stock completely on its own.
-- Try fancier versions of GARCH that handle the fact that volatility often
-  reacts differently to a stock going down vs going up.
-- Instead of one VaR number, predict a handful of different risk levels
-  at once to get a fuller picture of what could happen.
-- Test this same idea across other rough patches in market history (like
-  2020's COVID crash) to see if the "recovery lag" pattern I found shows
+- More input features (sector info, momentum) instead of treating each
+  stock in isolation.
+- A GARCH variant that accounts for volatility reacting differently to
+  drops versus gains.
+- Multiple VaR quantiles instead of a single cutoff, to get a fuller
+  picture of the risk distribution.
+- Testing this same setup across other historical rough patches (like the
+  2020 COVID crash) to see if the recovery-lag pattern found here shows
   up again, or if it was specific to this one banking crisis.
