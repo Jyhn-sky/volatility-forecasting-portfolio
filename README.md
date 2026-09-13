@@ -90,33 +90,56 @@ risk-parity.
 November 2023.
 
 **Forecast accuracy:** The LSTM outperformed both classical baselines on
-combined QLIKE (0.168 vs. 0.186 for GARCH and 0.222 for EWMA) and won on
-4 of 5 individual tickers (BAC, GS, MS, WFC). EWMA was more accurate
-specifically for JPM — a useful reminder that "best model" can be
-ticker-dependent, not universal.
+combined QLIKE (0.147 vs. 0.186 for GARCH and 0.222 for EWMA) and won on
+all 5 individual tickers. This held up consistently across runs.
 
-**VaR calibration:** 4 of 5 banks were well-calibrated (actual breach
-rate within ~1% of the 5% target). JPM was the exception: actual breach
-rate was 2.71% against a 5% target, meaning the model was overly
-conservative and under-flagged tail risk for that specific stock.
+**VaR calibration:** Mixed and run-dependent. In this run, only BAC was
+well-calibrated; GS, JPM, MS, and WFC all under-flagged risk (actual
+breach rates of 1-3% against a 5% target, vs. a cleaner calibration
+picture in an earlier run with a less-regularized model). This is a
+worthwhile trade-off to be transparent about: the regularization added to
+fix LSTM overfitting (smaller hidden layer, weight decay, early stopping)
+likely made the quantile model more conservative than before. Worth
+investigating further rather than treating either run as final.
 
-**Portfolio performance:** Despite the LSTM having the most accurate
-individual forecasts, the LSTM-driven risk-parity portfolio *underperformed*
-a naive equal-weight benchmark on a risk-adjusted basis (Sharpe -0.06 vs.
-0.12), as did GARCH (-0.13) and EWMA (-0.14). All three forecast-driven
-portfolios also had worse max drawdown than equal-weight.
+**Portfolio performance and regime breakdown:** Despite the LSTM having
+the most accurate individual forecasts, the LSTM-driven risk-parity
+portfolio underperformed a naive equal-weight benchmark on a risk-adjusted
+basis over the full test period (Sharpe -0.06 vs. 0.12), as did GARCH
+(-0.13) and EWMA (-0.14). Breaking the backtest into named sub-periods
+clarifies *why*:
 
-**Takeaway:** Better volatility forecasting did not translate into better
-portfolio outcomes here. The test window includes the March 2023 regional
-banking crisis (Silicon Valley Bank and Signature Bank collapsed that
-month), when bank stocks sold off in near-lockstep. Risk-parity works by
-shifting weight away from whichever asset looks individually riskiest —
-but during a systemic, correlation-driven shock, that doesn't help, since
-every asset moves together regardless of its own recent volatility. This
-suggests risk-parity alone is insufficient during correlation-breakdown
-events, and would benefit from an explicit correlation or regime-detection
-layer (see Extensions below) rather than relying on per-asset volatility
-forecasts alone.
+| Regime | ML (LSTM) | GARCH | EWMA | Equal-weight |
+|---|---|---|---|---|
+| Rate-hike selloff (2022) | -1.01 | -1.08 | -1.10 | -1.16 |
+| 2023 banking crisis | -2.20 | -2.16 | -2.24 | -2.17 |
+| Recovery (2023) | 0.81 | 0.82 | 0.86 | **1.68** |
+
+(Sharpe ratios shown per regime.)
+
+During the March 2023 regional banking crisis, all four strategies
+collapsed to nearly identical Sharpe ratios (-2.16 to -2.24) — when
+correlations spike toward 1 during a systemic shock, per-asset volatility
+forecasts stop mattering, since every stock sells off together regardless
+of its individual risk profile. The real separation shows up in the
+**recovery period**, where equal-weight (+34% annualized) clearly
+outperformed every forecast-driven strategy (+16-17%). This makes sense
+structurally: risk-parity shifts weight away from whichever stock
+currently looks most volatile — but the stocks flagged as riskiest during
+a crisis are often exactly the ones that rebound hardest once it passes.
+Risk-parity's own logic keeps it underweight in precisely the names that
+drive the recovery rally, causing it to structurally lag.
+
+**Takeaway:** Better volatility forecasting (the LSTM's clear win on
+accuracy) did not translate into better portfolio outcomes here — not
+because risk-parity mismanaged the crisis itself (every strategy fared
+equally badly there), but because risk-parity's inverse-volatility
+weighting works against it during the snap-back recovery that follows a
+crisis. This suggests risk-parity would benefit from a regime-aware
+adjustment — e.g. temporarily relaxing the inverse-vol weighting, or
+blending toward equal-weight, once a crisis period is identified as
+ending — rather than applying the same allocation logic uniformly across
+very different market conditions.
 
 ## Known limitations (be upfront about these — it's a strength, not a weakness)
 

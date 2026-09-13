@@ -28,10 +28,23 @@ import pandas as pd
 from data_pipeline import fetch_real_data, generate_synthetic_data, compute_features
 from baseline_models import rolling_baseline_forecasts
 from ml_model import train_model, predict, FEATURE_COLS
-from backtest import backtest_portfolio, performance_summary
+from backtest import backtest_portfolio, performance_summary, regime_performance
 from evaluate import compare_forecasts, var_calibration
 
 warnings.filterwarnings("ignore")
+
+# Default regime windows for breaking down backtest performance. These are
+# tuned to 2022-2023 US market history (rate-hike selloff, then the March
+# 2023 regional banking crisis, then recovery) since that's the period this
+# project has been validated against with bank-stock tickers. If you're
+# backtesting a different date range or asset class, edit these to match
+# whatever regimes are actually relevant to your own test window --
+# sub-periods that don't overlap your data are skipped automatically.
+DEFAULT_REGIMES = [
+    ("Rate-hike selloff", "2022-01-01", "2022-10-15"),
+    ("2023 banking crisis", "2023-03-01", "2023-05-15"),
+    ("Recovery", "2023-05-16", "2023-12-31"),
+]
 
 
 def plot_per_ticker(merged, prices, tickers, split_date, out_dir):
@@ -175,6 +188,29 @@ def run(tickers, demo, start, end, train_frac=0.7, out_dir="."):
         print(f"  {name:15s}  ann_return={stats['annualized_return']:.2%}  "
               f"ann_vol={stats['annualized_vol']:.2%}  sharpe={stats['sharpe']:.2f}  "
               f"max_dd={stats['max_drawdown']:.2%}")
+
+    print("\n--- Regime breakdown (does performance hold up across different market conditions?) ---")
+    regime_tables = {}
+    for name, (port_ret, _) in results.items():
+        rt = regime_performance(port_ret, DEFAULT_REGIMES)
+        regime_tables[name] = rt
+        if len(rt) <= 1:  # only the "Full period" row matched -- none of the named regimes overlapped
+            continue
+        print(f"\n  {name}:")
+        for _, row in rt.iterrows():
+            print(f"    {row['regime']:22s} n={row['n_days']:4d}  "
+                  f"sharpe={row['sharpe']:6.2f}  max_dd={row['max_drawdown']:7.2%}  "
+                  f"ann_return={row['annualized_return']:7.2%}")
+
+    if any(len(rt) > 1 for rt in regime_tables.values()):
+        combined = pd.concat(
+            [rt.assign(strategy=name) for name, rt in regime_tables.items()], ignore_index=True
+        )
+        combined.to_csv(f"{out_dir}/regime_breakdown.csv", index=False)
+        print(f"\nSaved regime breakdown to {out_dir}/regime_breakdown.csv")
+    else:
+        print("  (None of the default regime windows overlapped this backtest's date range --"
+              " edit DEFAULT_REGIMES in main.py to match your own test period.)")
 
     print("\n=== Saving plots ===")
     fig, axes = plt.subplots(2, 1, figsize=(10, 8))

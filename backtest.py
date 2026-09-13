@@ -121,6 +121,43 @@ def performance_summary(port_returns: pd.Series):
     }
 
 
+def regime_performance(port_returns: pd.Series, regimes):
+    """
+    Break performance_summary down across named date sub-periods instead of
+    one aggregate number for the whole backtest.
+
+    Why this matters: an aggregate Sharpe ratio can hide the fact that a
+    strategy behaves completely differently in calm markets vs. a crisis --
+    exactly what we found with the 2023 regional banking crisis, where
+    risk-parity underperformed specifically *because* of a correlation
+    breakdown during a narrow window, not evenly across the whole backtest.
+    Aggregating masks this; splitting by regime reveals it.
+
+    regimes: list of (label, start_date, end_date) tuples, e.g.
+        [("Rate-hike selloff", "2022-01-01", "2022-10-15"),
+         ("Banking crisis",    "2023-03-01", "2023-05-15"),
+         ("Recovery",          "2023-05-16", "2023-12-31")]
+    Dates outside the range actually covered by port_returns are silently
+    clipped; a regime with zero overlapping observations is skipped.
+
+    Returns a DataFrame, one row per regime plus a final "Full period" row.
+    """
+    rows = []
+    for label, start, end in regimes:
+        window = port_returns.loc[start:end]
+        if len(window) < 5:
+            continue  # not enough observations in this window to be meaningful
+        stats = performance_summary(window)
+        rows.append({"regime": label, "start": window.index.min(), "end": window.index.max(),
+                     "n_days": len(window), **stats})
+
+    full_stats = performance_summary(port_returns)
+    rows.append({"regime": "Full period", "start": port_returns.index.min(),
+                 "end": port_returns.index.max(), "n_days": len(port_returns), **full_stats})
+
+    return pd.DataFrame(rows)
+
+
 if __name__ == "__main__":
     from data_pipeline import generate_synthetic_data, compute_features
 
