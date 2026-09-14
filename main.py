@@ -2,18 +2,20 @@
 main.py
 
 End-to-end pipeline:
-  1. Load data (real via yfinance, or synthetic for offline demo)
+  1. Load real market data via yfinance
   2. Build features
   3. Walk-forward split
   4. Fit GARCH/EWMA baselines + train LSTM on the training window
   5. Generate forecasts on the held-out window
   6. Evaluate forecast accuracy (RMSE, QLIKE) and VaR calibration
   7. Backtest portfolios built from each forecast source
-  8. Save comparison plots + a results table
+  8. Show or save comparison plots + a results table
 
 Usage:
-    python main.py --demo                     # synthetic data, fast, no internet needed
     python main.py --tickers AAPL MSFT JPM XOM PG --start 2018-01-01 --end 2024-01-01
+
+Requires an internet connection, since all data is pulled live from
+Yahoo Finance via yfinance.
 """
 
 import argparse
@@ -24,7 +26,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from data_pipeline import fetch_real_data, generate_synthetic_data, compute_features
+from data_pipeline import fetch_real_data, compute_features
 from baseline_models import rolling_baseline_forecasts
 from ml_model import train_model, predict, FEATURE_COLS
 from backtest import backtest_portfolio, performance_summary, regime_performance
@@ -105,12 +107,9 @@ def plot_per_ticker(merged, prices, tickers, split_date, out_dir, save=True):
     return saved
 
 
-def run(tickers, demo, start, end, train_frac=0.7, out_dir=".", save=True):
-    print(f"\n=== Loading data ({'synthetic demo' if demo else 'real via yfinance'}) ===")
-    if demo:
-        prices, vix = generate_synthetic_data(tickers, n_days=1500)
-    else:
-        prices, vix = fetch_real_data(tickers, start, end)
+def run(tickers, start, end, train_frac=0.7, out_dir=".", save=True):
+    print("\n=== Loading data (real via yfinance) ===")
+    prices, vix = fetch_real_data(tickers, start, end)
 
     print(f"Price data: {prices.shape}, date range {prices.index.min()} to {prices.index.max()}")
 
@@ -261,7 +260,6 @@ def run(tickers, demo, start, end, train_frac=0.7, out_dir=".", save=True):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--demo", action="store_true", help="Use synthetic data (no internet needed)")
     parser.add_argument("--tickers", nargs="+", default=["AAPL", "MSFT", "JPM", "XOM", "PG"])
     parser.add_argument("--start", default="2018-01-01")
     parser.add_argument("--end", default="2024-01-01")
@@ -283,4 +281,4 @@ if __name__ == "__main__":
             matplotlib.use("Agg")
             args.save = True
 
-    run(args.tickers, args.demo, args.start, args.end, out_dir=args.out_dir, save=args.save)
+    run(args.tickers, args.start, args.end, out_dir=args.out_dir, save=args.save)

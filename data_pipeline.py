@@ -4,9 +4,8 @@ data_pipeline.py
 Fetches daily price data for a universe of tickers + VIX, and builds the
 feature set used by both the GARCH baseline and the ML volatility model.
 
-Real data: uses yfinance (requires internet access when you run this locally).
-Offline/demo mode: generates synthetic GBM-with-vol-clustering price paths so
-you can test the full pipeline without network access. Toggle with `demo=True`.
+Uses yfinance to pull real market data. This requires an internet
+connection when you run it.
 """
 
 import numpy as np
@@ -28,50 +27,6 @@ def fetch_real_data(tickers, start, end, vix_ticker="^VIX"):
     vix = vix.rename("VIX") if isinstance(vix, pd.Series) else vix.iloc[:, 0].rename("VIX")
 
     return prices.dropna(how="all"), vix.dropna()
-
-
-def generate_synthetic_data(tickers, n_days=1500, seed=42):
-    """
-    Generate synthetic price paths with realistic stylized facts:
-    volatility clustering (via a simple GARCH(1,1) DGP) and fat tails.
-    Used only for offline testing of the pipeline logic.
-    """
-    rng = np.random.default_rng(seed)
-    n_assets = len(tickers)
-
-    # GARCH(1,1) parameters for the *true* data-generating process
-    omega, alpha, beta = 1e-6, 0.08, 0.88
-    dates = pd.bdate_range(end=pd.Timestamp.today().normalize(), periods=n_days)
-    n_days = len(dates)  # bdate_range can return periods-1 depending on the anchor date
-
-    price_data = {}
-    all_returns = []
-    for i, ticker in enumerate(tickers):
-        h = np.zeros(n_days)          # conditional variance
-        eps = np.zeros(n_days)        # innovations
-        h[0] = omega / (1 - alpha - beta)
-        # Student-t innovations for fat tails
-        z = rng.standard_t(df=5, size=n_days) / np.sqrt(5 / 3)
-        for t in range(1, n_days):
-            h[t] = omega + alpha * eps[t - 1] ** 2 + beta * h[t - 1]
-            eps[t] = np.sqrt(h[t]) * z[t]
-
-        drift = 0.0002 + 0.00005 * i  # tiny per-asset drift variation
-        log_returns = drift + eps
-        prices = 100 * np.exp(np.cumsum(log_returns))
-        price_data[ticker] = prices
-        all_returns.append(log_returns)
-
-    prices_df = pd.DataFrame(price_data, index=dates)
-
-    # Synthetic VIX-like series: annualized vol of an equal-weight basket,
-    # smoothed, roughly mean-reverting around 16-20.
-    basket_returns = np.mean(all_returns, axis=0)
-    realized = pd.Series(basket_returns, index=dates).rolling(21).std() * np.sqrt(TRADING_DAYS) * 100
-    vix = (realized.ffill().bfill() * 1.15 + rng.normal(0, 1.0, n_days)).clip(lower=9)
-    vix.name = "VIX"
-
-    return prices_df, vix
 
 
 def compute_features(prices: pd.DataFrame, vix: pd.Series, vol_horizon=21):
@@ -149,8 +104,19 @@ def walk_forward_splits(panel: pd.DataFrame, n_splits=5, min_train_frac=0.5):
 
 
 if __name__ == "__main__":
-    tickers = ["AAPL", "MSFT", "JPM", "XOM", "PG"]
-    prices, vix = generate_synthetic_data(tickers)
+    # Minimal self-test of compute_features, using a tiny hand-built price
+    # series. This is only here to sanity-check this file's logic in
+    # isolation; it is not part of the program's actual run path, which
+    # always uses fetch_real_data() via main.py.
+    rng = np.random.default_rng(0)
+    dates = pd.bdate_range("2023-01-01", periods=300)
+    prices = pd.DataFrame(
+        {t: 100 * np.exp(np.cumsum(rng.normal(0.0002, 0.015, len(dates))))
+         for t in ["TEST_A", "TEST_B"]},
+        index=dates,
+    )
+    vix = pd.Series(rng.normal(18, 3, len(dates)).clip(min=9), index=dates, name="VIX")
+
     panel = compute_features(prices, vix)
     print(panel.head())
     print(f"\nPanel shape: {panel.shape}, date range: {panel.index.min()} to {panel.index.max()}")

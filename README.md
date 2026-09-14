@@ -3,9 +3,11 @@
 This project predicts how risky a stock is likely to be (its volatility),
 instead of trying to predict whether the price will go up or down. Those
 risk predictions are then used to decide how to split money across a few
-different stocks. I picked this angle on purpose because I want to go
-into risk/portfolio management, and this is a small, hands-on version of
-the kind of problem that field actually deals with.
+different stocks. I picked this angle because it felt more realistic and substantial than a
+typical "predict if the stock goes up" project. I'm still figuring out
+exactly what kind of role I want to pursue, somewhere in business, but
+this was a good way to dig into a real problem instead of just running a
+model and calling it done.
 
 ## Why volatility instead of price direction?
 
@@ -30,8 +32,7 @@ really" or "only sometimes."
 ## Project structure
 
 ```
-data_pipeline.py     # loads stock price data (real data via yfinance, or synthetic
-                      #   data for offline testing) and builds the input features
+data_pipeline.py     # loads stock price data via yfinance and builds the input features
 baseline_models.py   # the two classical volatility models: EWMA and GARCH
 ml_model.py          # LSTM models: one predicts volatility, another predicts a
                       #   "worst case" return (used for VaR, explained below)
@@ -49,17 +50,15 @@ pip install torch arch scikit-learn matplotlib yfinance pandas numpy
 ## Usage
 
 ```bash
-# Quick test with synthetic data, no internet needed
-# Charts open in windows, nothing is written to disk unless you add --save
-python main.py --demo --tickers AAPL MSFT JPM
-
-# Real run using actual stock data (requires internet)
 python main.py --tickers AAPL MSFT JPM XOM PG --start 2015-01-01 --end 2024-01-01
 
 # Add --save to write results.png, per-ticker PNGs, and CSV files to disk
 # instead of just opening chart windows
 python main.py --tickers AAPL MSFT JPM XOM PG --start 2015-01-01 --end 2024-01-01 --save
 ```
+
+Requires an internet connection, since all price data is pulled live from
+Yahoo Finance via yfinance.
 
 By default, charts open in interactive windows and nothing gets saved.
 Close the windows when you're done looking and the program ends with
@@ -164,9 +163,6 @@ instead of applying the same rule regardless of market conditions.
 - The correlation estimate used for the min-variance alternative (also in
   `backtest.py`) is a simplified shrinkage approach. Real risk teams
   typically use more sophisticated techniques.
-- The synthetic data mode is only meant for quickly testing that the code
-  runs. It doesn't reflect real market behavior, so all conclusions here
-  come from the real-data runs.
 - This was only tested on one time window, and a 5% "bad day" is
   inherently rare, so the calibration numbers are based on a fairly small
   sample. They're best treated as a rough signal, not a precise
