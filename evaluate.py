@@ -12,6 +12,13 @@ projects skip:
    actual breach rate on held-out data should be close to 5%. A model
    that "predicts" tail risk but is miscalibrated is worse than useless
    in a risk context because it gives false confidence.
+
+Also reported: correlation between forecast and realized vol, and the
+ratio of forecast spread to realized spread (std_ratio). RMSE and QLIKE
+can look fine for a forecast that barely moves; these two make a flat,
+unresponsive forecast easy to spot. Note that a good forecast should
+still have std_ratio below 1, since part of realized vol is pure noise
+that no model can predict.
 """
 
 import numpy as np
@@ -50,6 +57,8 @@ def compare_forecasts(merged: pd.DataFrame, target_col="target_fwd_rvol",
             "n_obs": len(d),
             "rmse": rmse(d[target_col], d[col]),
             "qlike": qlike_loss(d[target_col], d[col]),
+            "corr": d[target_col].corr(d[col]),
+            "std_ratio": d[col].std() / d[target_col].std(),
         })
     return pd.DataFrame(rows).sort_values("qlike")
 

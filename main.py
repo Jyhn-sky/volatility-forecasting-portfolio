@@ -107,7 +107,7 @@ def plot_per_ticker(merged, prices, tickers, split_date, out_dir, save=True):
     return saved
 
 
-def run(tickers, start, end, train_frac=0.7, out_dir=".", save=True):
+def run(tickers, start, end, train_frac=0.7, out_dir=".", save=True, seed=42):
     print("\n=== Loading data (real via yfinance) ===")
     prices, vix = fetch_real_data(tickers, start, end)
 
@@ -131,11 +131,12 @@ def run(tickers, start, end, train_frac=0.7, out_dir=".", save=True):
     val_cut = train_panel.index.unique()[int(len(train_panel.index.unique()) * 0.85)]
     lstm_train = train_panel[train_panel.index <= val_cut]
     lstm_val = train_panel[train_panel.index > val_cut]
-    model, scaler, history = train_model(lstm_train, lstm_val, mode="point", epochs=25, verbose=True)
+    model, scaler, history = train_model(lstm_train, lstm_val, mode="point", epochs=25,
+                                         seed=seed, verbose=True)
 
     print("\n=== Training LSTM (5% quantile, for VaR) ===")
     q_model, q_scaler, _ = train_model(lstm_train, lstm_val, mode="quantile", quantile=0.05,
-                                        epochs=25, verbose=False)
+                                        epochs=25, seed=seed, verbose=False)
 
     print("\n=== Generating test-set predictions ===")
     ml_preds = predict(model, test_panel, scaler, target_col="target_fwd_rvol")
@@ -268,6 +269,8 @@ if __name__ == "__main__":
                          help="Write results.png, per-ticker PNGs, and CSVs to disk. "
                               "Without this flag, charts open in windows and nothing is "
                               "saved -- just close the windows when you're done looking.")
+    parser.add_argument("--seed", type=int, default=42,
+                         help="Random seed for LSTM training, so repeated runs give the same result.")
     args = parser.parse_args()
 
     if args.save:
@@ -281,4 +284,4 @@ if __name__ == "__main__":
             matplotlib.use("Agg")
             args.save = True
 
-    run(args.tickers, args.start, args.end, out_dir=args.out_dir, save=args.save)
+    run(args.tickers, args.start, args.end, out_dir=args.out_dir, save=args.save, seed=args.seed)

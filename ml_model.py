@@ -11,6 +11,8 @@ Feature scaling and sequence construction are handled here so training
 code stays clean.
 """
 
+import random
+
 import numpy as np
 import pandas as pd
 import torch
@@ -78,6 +80,15 @@ class VolLSTM(nn.Module):
         return self.head(last_hidden)
 
 
+def set_seed(seed):
+    """Make training repeatable. Without this, two runs with identical
+    settings start from different random weights and shuffle batches
+    differently, so it's impossible to tell a real improvement from luck."""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+
+
 def pinball_loss(y_pred, y_true, quantile):
     diff = y_true - y_pred
     return torch.mean(torch.maximum(quantile * diff, (quantile - 1) * diff))
@@ -85,7 +96,7 @@ def pinball_loss(y_pred, y_true, quantile):
 
 def train_model(train_panel, val_panel, mode="point", quantile=0.05,
                  target_col=None, epochs=30, batch_size=64, lr=1e-3,
-                 hidden_size=16, weight_decay=1e-4, patience=5, verbose=True):
+                 hidden_size=16, weight_decay=1e-4, patience=5, seed=42, verbose=True):
     """
     Train a VolLSTM.
       mode="point"    -> MSE against target_fwd_rvol (forward realized vol;
@@ -107,8 +118,13 @@ def train_model(train_panel, val_panel, mode="point", quantile=0.05,
         epochs, and the model's weights are rolled back to whichever epoch
         had the best validation loss (not just whatever epoch training
         happened to stop at)
+    `seed` fixes the weight initialization and batch shuffling so results
+    are repeatable. Pass seed=None to leave it random.
     Returns (model, scaler, history).
     """
+    if seed is not None:
+        set_seed(seed)
+
     if target_col is None:
         target_col = "target_next_return" if mode == "quantile" else "target_fwd_rvol"
 
@@ -201,10 +217,18 @@ def predict(model, panel, scaler, feature_cols=FEATURE_COLS, seq_len=SEQ_LEN, ta
 
 
 if __name__ == "__main__":
-    from data_pipeline import generate_synthetic_data, compute_features
+    # Minimal self-test on a tiny hand-built price series (same idea as the
+    # one in data_pipeline.py). Not part of the real run path.
+    from data_pipeline import compute_features
 
-    tickers = ["AAPL", "MSFT", "JPM"]
-    prices, vix = generate_synthetic_data(tickers, n_days=1200)
+    rng = np.random.default_rng(0)
+    dates = pd.bdate_range("2019-01-01", periods=1200)
+    prices = pd.DataFrame(
+        {t: 100 * np.exp(np.cumsum(rng.normal(0.0002, 0.015, len(dates))))
+         for t in ["TEST_A", "TEST_B", "TEST_C"]},
+        index=dates,
+    )
+    vix = pd.Series(rng.normal(18, 3, len(dates)).clip(min=9), index=dates, name="VIX")
     panel = compute_features(prices, vix)
 
     dates = np.sort(panel.index.unique())

@@ -39,6 +39,17 @@ def fit_garch(returns: pd.Series):
     return res
 
 
+def garch_filter(params, returns: pd.Series):
+    """
+    Run an already-fitted GARCH(1,1) over `returns` without re-estimating
+    its parameters. This updates the conditional variance with every new
+    return, which is cheap, so the forecast can move daily even though the
+    (slow) parameter fit only happens every few weeks.
+    """
+    am = arch_model(returns * 100, vol="Garch", p=1, q=1, dist="t", mean="Zero")
+    return am.fix(params)
+
+
 def garch_forecast(fitted_res, horizon=21):
     """
     Forecast annualized volatility `horizon` days ahead from a fitted
@@ -52,8 +63,12 @@ def garch_forecast(fitted_res, horizon=21):
 
 def rolling_baseline_forecasts(panel: pd.DataFrame, horizon=21, refit_every=21):
     """
-    Produce EWMA and GARCH forward-vol forecasts per ticker, refit
-    periodically (refitting GARCH every day is unnecessary and slow).
+    Produce EWMA and GARCH forward-vol forecasts per ticker. GARCH
+    parameters are re-estimated every `refit_every` days (refitting daily
+    is slow and barely changes them), but the conditional variance is
+    updated with each new day's return, so the forecast still reacts
+    daily. Without that daily update the GARCH forecast would sit frozen
+    at the same value for `refit_every` days at a time.
     Returns a DataFrame aligned to panel's index with baseline columns
     added, so it can be merged directly for evaluation.
     """
@@ -66,20 +81,21 @@ def rolling_baseline_forecasts(panel: pd.DataFrame, horizon=21, refit_every=21):
         ewma_preds = np.full(len(dates), np.nan)
         garch_preds = np.full(len(dates), np.nan)
 
-        fitted = None
+        params = None
         min_hist = 252
         for i in range(min_hist, len(dates)):
             hist = returns.iloc[:i]
             ewma_preds[i] = ewma_forecast(hist.iloc[-500:], horizon=horizon)
 
-            if (i - min_hist) % refit_every == 0 or fitted is None:
+            if (i - min_hist) % refit_every == 0 or params is None:
                 try:
-                    fitted = fit_garch(hist.iloc[-750:])
+                    params = fit_garch(hist.iloc[-750:]).params
                 except Exception:
-                    fitted = None
-            if fitted is not None:
+                    params = None
+            if params is not None:
                 try:
-                    garch_preds[i] = garch_forecast(fitted, horizon=horizon)
+                    filtered = garch_filter(params, hist.iloc[-750:])
+                    garch_preds[i] = garch_forecast(filtered, horizon=horizon)
                 except Exception:
                     garch_preds[i] = np.nan
 
@@ -93,10 +109,15 @@ def rolling_baseline_forecasts(panel: pd.DataFrame, horizon=21, refit_every=21):
 
 
 if __name__ == "__main__":
-    from data_pipeline import generate_synthetic_data, compute_features
+    # Minimal self-test on a tiny hand-built price series (same idea as the
+    # one in data_pipeline.py). Not part of the real run path.
+    from data_pipeline import compute_features
 
-    tickers = ["AAPL"]
-    prices, vix = generate_synthetic_data(tickers, n_days=400)
+    rng = np.random.default_rng(0)
+    dates = pd.bdate_range("2022-01-03", periods=400)
+    prices = pd.DataFrame({"TEST": 100 * np.exp(np.cumsum(rng.normal(0.0002, 0.015, len(dates))))},
+                          index=dates)
+    vix = pd.Series(rng.normal(18, 3, len(dates)).clip(min=9), index=dates, name="VIX")
     panel = compute_features(prices, vix)
 
     baselines = rolling_baseline_forecasts(panel)
