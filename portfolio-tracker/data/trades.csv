@@ -1,0 +1,10 @@
+date,ticker,action,shares,price,fees,thesis,catalyst,key_risk,exit_trigger
+2026-01-02,AAPL,BUY,40,,0,"Example: cash-generative mega-cap; services mix supports margins",Next earnings / product cycle,Hardware demand slowdown,Sell if services growth stalls two quarters in a row
+2026-01-02,MSFT,BUY,20,,0,"Example: cloud + enterprise software compounder",Cloud growth at earnings,AI capex not earning a return,Trim if weight exceeds 15%
+2026-01-02,JPM,BUY,32,,0,"Example: best-in-class bank, benefits from higher-for-longer rates",Net interest income guidance,Credit losses rise in a slowdown,Review if rate cuts compress NII
+2026-01-02,XOM,BUY,85,,0,"Example: energy exposure as an inflation hedge",Oil price / OPEC decisions,Oil price collapse,Cut if position falls 15% below cost
+2026-01-02,PG,BUY,65,,0,"Example: low-beta defensive ballast",Pricing power in quarterly results,Volume declines from price hikes,Hold as long as it lowers portfolio beta
+2026-01-02,UNH,BUY,30,,0,"Example: healthcare diversification",Medical cost trend updates,Regulatory / reimbursement changes,Exit on a guidance cut
+2026-01-02,CAT,BUY,18,,0,"Example: cyclical play on infrastructure spending",Order backlog at earnings,Industrial recession,Trim if backlog shrinks
+2026-01-02,NEE,BUY,130,,0,"Example: utilities exposure and rate sensitivity",Rate cuts,Rates stay high,Review if 10y yield rises sharply
+2026-06-01,XOM,SELL,25,,0,"Example: trim to rebalance energy weight",,,

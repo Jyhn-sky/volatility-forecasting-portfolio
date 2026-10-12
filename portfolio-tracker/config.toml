@@ -1,0 +1,19 @@
+# Portfolio settings. Edit these, then log trades in data/trades.csv.
+
+[portfolio]
+name = "Mock Equity Portfolio"
+start_date = "2026-01-02"      # inception date; history starts here
+starting_cash = 100000
+benchmark = "SPY"              # S&P 500. For the S&P/TSX use "XIC.TO" (keep all holdings in CAD then)
+risk_free_rate = 0.04          # annual, used for alpha and Sharpe
+
+# Sector for each ticker. Anything missing here is looked up from Yahoo Finance.
+[sectors]
+AAPL = "Information Technology"
+MSFT = "Information Technology"
+JPM = "Financials"
+XOM = "Energy"
+PG = "Consumer Staples"
+UNH = "Health Care"
+CAT = "Industrials"
+NEE = "Utilities"

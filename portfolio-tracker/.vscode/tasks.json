@@ -1,0 +1,24 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Install requirements",
+      "type": "shell",
+      "command": "${command:python.interpreterPath} -m pip install -r requirements.txt",
+      "problemMatcher": []
+    },
+    {
+      "label": "Run dashboard",
+      "type": "shell",
+      "command": "${command:python.interpreterPath} -m streamlit run app.py",
+      "problemMatcher": []
+    },
+    {
+      "label": "Run tests",
+      "type": "shell",
+      "command": "${command:python.interpreterPath} -m pytest -q",
+      "group": "test",
+      "problemMatcher": []
+    }
+  ]
+}
